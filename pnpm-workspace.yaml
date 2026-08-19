@@ -1,3 +1,6 @@
 packages:
   - 'services/*'
   - 'libs/*'
+allowBuilds:
+  esbuild: false
+  serverless: false
