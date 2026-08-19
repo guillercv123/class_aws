@@ -30,7 +30,7 @@ package:
 
 functions:
   preTokenGeneration:
-    handler: dist/pre-token-generation.handlers
+    handler: dist/pre-token-generation.handler
     description: Injects tenant_id, roles and permissions into the JWT
     events:
       - cognitoUserPool:
