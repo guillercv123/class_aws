@@ -59,6 +59,19 @@ functions:
             type: request
             identitySource: method.request.header.Authorization
             resultTtlInSeconds: 0
+  sendMe:
+    handler: dist/send-me.handle
+    description: Retorna el token con el nuevo valor enviado
+    events:
+      - http:
+          path: /me
+          method: post
+          cors: true
+          authorizer:
+            name: authorizer
+            type: request
+            identitySource: method.request.header.Authorization
+            resultTtlInSeconds: 0
 
 resources:
   Resources:
