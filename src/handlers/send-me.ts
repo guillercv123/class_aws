@@ -13,7 +13,7 @@ const logger = new Logger();
 
 export const handler: APIGatewayProxyHandler = async (event) => {
     const authorizer = event.requestContext.authorizer;
-    const { name } = JSON.parse(event.body);
+    const { name } = JSON.parse(event.body ?? '{}');
     if (!authorizer) {
         return {
             statusCode: 401,
