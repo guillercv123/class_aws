@@ -1,0 +1,136 @@
+service: catalog-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    TABLE_NAME: !Ref CatalogTable
+    LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}, 'INFO'}
+    POWERTOOLS_SERVICE_NAME: catalog-service
+  tracing:
+    lambda: true
+    apiGateway: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt CatalogTable.Arn
+            - !Sub '${CatalogTable.Arn}/index/*'
+
+custom:
+  logLevel:
+    demo: DEBUG
+    dev: DEBUG
+    staging: INFO
+    prod: WARN
+  # Authorizer compartido del identity-service (sesión 1).
+  # En el hands-on se referencia por ARN cross-stack o se despliega un authorizer local.
+  authorizer:
+    name: authorizer
+    type: request
+    identitySource: method.request.header.Authorization
+    resultTtlInSeconds: 0
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  # ===== Bloque 4: Handlers CRUD =====
+  # TODO Bloque 4: descomenta cuando implementes los handlers.
+  # createProduct:
+  #   handler: dist/create-product.handler
+  #   events:
+  #     - http: { path: /products, method: post, cors: true, authorizer: ${self:custom.authorizer} }
+  # getProduct:
+  #   handler: dist/get-product.handler
+  #   events:
+  #     - http: { path: /products/{id}, method: get, cors: true, authorizer: ${self:custom.authorizer} }
+  # listProducts:
+  #   handler: dist/list-products.handler
+  #   events:
+  #     - http: { path: /products, method: get, cors: true, authorizer: ${self:custom.authorizer} }
+  # createCategory:
+  #   handler: dist/create-category.handler
+  #   events:
+  #     - http: { path: /categories, method: post, cors: true, authorizer: ${self:custom.authorizer} }
+
+  # ===== Bloque 5: Projector CQRS =====
+  # TODO Bloque 5: descomenta cuando implementes el projector.
+  # projector:
+  #   handler: dist/projector.handler
+  #   events:
+  #     - stream:
+  #         type: dynamodb
+  #         arn: !GetAtt CatalogTable.StreamArn
+  #         batchSize: 10
+  #         startingPosition: LATEST
+  #         maximumRetryAttempts: 3
+  #         destinations:
+  #           onFailure:
+  #             type: sqs
+  #             arn: !GetAtt ProjectorDLQ.Arn
+
+resources:
+  Resources:
+    CatalogTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: orderflow-catalog-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+          - AttributeName: GSI1PK
+            AttributeType: S
+          - AttributeName: GSI1SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: GSI1
+            KeySchema:
+              - AttributeName: GSI1PK
+                KeyType: HASH
+              - AttributeName: GSI1SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+
+    ProjectorDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: catalog-projector-dlq-${self:provider.stage}
+        MessageRetentionPeriod: 1209600
+
+  Outputs:
+    CatalogTableName:
+      Value: !Ref CatalogTable
+      Export:
+        Name: ${self:service}-${self:provider.stage}-TableName
+    ApiUrl:
+      Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'

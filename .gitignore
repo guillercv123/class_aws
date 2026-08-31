@@ -1,6 +1,14 @@
 node_modules/
 .idea/
 .github/
-.serverless/
 dist/
-scripts/
+.serverless/
+coverage/
+*.log
+.env
+.env.local
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.tsbuildinfo

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@orderflow/shared": ["../../libs/shared/src/index.ts"]
+    },
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}
