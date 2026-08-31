@@ -30,7 +30,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         newValue: String(name ?? '')
     };
 
-    logger.info('Me requested', { tenantId: ctx.tenantId, userId: ctx.userId });
+    logger.info('Me requested', { tenantId: ctx.tenantId, userId: ctx.userId , newValue: ctx.newValue});
 
     return {
         statusCode: 200,

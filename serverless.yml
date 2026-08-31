@@ -60,7 +60,7 @@ functions:
             identitySource: method.request.header.Authorization
             resultTtlInSeconds: 0
   sendMe:
-    handler: dist/send-me.handle
+    handler: dist/send-me.handler
     description: Retorna el token con el nuevo valor enviado
     events:
       - http:
