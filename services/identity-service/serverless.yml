@@ -1,0 +1,154 @@
+service: identity-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+    POWERTOOLS_SERVICE_NAME: identity-service
+  tracing:
+    lambda: true
+    apiGateway: true
+
+custom:
+  logLevel:
+    dev: DEBUG
+    staging: INFO
+    prod: WARN
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  preTokenGeneration:
+    handler: dist/pre-token-generation.handler
+    description: Injects tenant_id, roles and permissions into the JWT
+    events:
+      - cognitoUserPool:
+          pool: orderflow-${self:provider.stage}-users
+          trigger: PreTokenGeneration
+          lambdaVersion: V2_0
+          existing: true
+
+  authorizer:
+    handler: dist/authorizer.handler
+    description: Validates Cognito JWT and returns IAM policy
+    environment:
+      USER_POOL_ID: !Ref CognitoUserPool
+      CLIENT_ID: !Ref CognitoUserPoolClient
+
+  me:
+    handler: dist/me.handler
+    description: Returns the current user context
+    events:
+      - http:
+          path: /me
+          method: get
+          cors: true
+          authorizer:
+            name: authorizer
+            type: request
+            identitySource: method.request.header.Authorization
+            resultTtlInSeconds: 0
+  sendMe:
+    handler: dist/send-me.handler
+    description: Retorna el token con el nuevo valor enviado
+    events:
+      - http:
+          path: /me
+          method: post
+          cors: true
+          authorizer:
+            name: authorizer
+            type: request
+            identitySource: method.request.header.Authorization
+            resultTtlInSeconds: 0
+
+resources:
+  Resources:
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: orderflow-${self:provider.stage}-users
+        MfaConfiguration: OPTIONAL
+        EnabledMfas:
+          - SOFTWARE_TOKEN_MFA
+        AdminCreateUserConfig:
+          AllowAdminCreateUserOnly: true
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 12
+            RequireLowercase: true
+            RequireUppercase: true
+            RequireNumbers: true
+            RequireSymbols: true
+        Schema:
+          - Name: email
+            AttributeDataType: String
+            Mutable: false
+            Required: true
+          - Name: tenant_id
+            AttributeDataType: String
+            Mutable: false
+            Required: false
+        UserPoolAddOns:
+          AdvancedSecurityMode: AUDIT
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: orderflow-${self:provider.stage}-web
+        UserPoolId: !Ref CognitoUserPool
+        GenerateSecret: false
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        AccessTokenValidity: 60
+        IdTokenValidity: 60
+        RefreshTokenValidity: 30
+        TokenValidityUnits:
+          AccessToken: minutes
+          IdToken: minutes
+          RefreshToken: days
+        PreventUserExistenceErrors: ENABLED
+
+    AdminGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: admin
+        UserPoolId: !Ref CognitoUserPool
+        Precedence: 1
+
+    ManagerGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: manager
+        UserPoolId: !Ref CognitoUserPool
+        Precedence: 2
+
+    StaffGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: staff
+        UserPoolId: !Ref CognitoUserPool
+        Precedence: 3
+
+  Outputs:
+    UserPoolId:
+      Value: !Ref CognitoUserPool
+      Export:
+        Name: ${self:service}-${self:provider.stage}-UserPoolId
+    UserPoolClientId:
+      Value: !Ref CognitoUserPoolClient
+      Export:
+        Name: ${self:service}-${self:provider.stage}-UserPoolClientId
