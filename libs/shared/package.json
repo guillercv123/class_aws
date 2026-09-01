@@ -1,0 +1,17 @@
+{
+  "name": "@orderflow/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --max-warnings 0",
+    "test": "echo \"no tests yet\" && exit 0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "typescript": "^5.5.4"
+  }
+}

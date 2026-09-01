@@ -39,7 +39,7 @@ custom:
   # Authorizer compartido del identity-service (sesión 1).
   # En el hands-on se referencia por ARN cross-stack o se despliega un authorizer local.
   authorizer:
-    name: authorizer
+    arn: ${cf:identity-service-${self:provider.stage}.AuthorizerLambdaArn}
     type: request
     identitySource: method.request.header.Authorization
     resultTtlInSeconds: 0
@@ -53,22 +53,22 @@ package:
 functions:
   # ===== Bloque 4: Handlers CRUD =====
   # TODO Bloque 4: descomenta cuando implementes los handlers.
-  # createProduct:
-  #   handler: dist/create-product.handler
-  #   events:
-  #     - http: { path: /products, method: post, cors: true, authorizer: ${self:custom.authorizer} }
+  createProduct:
+    handler: dist/create-product.handler
+    events:
+      - http: { path: /products, method: post, cors: true, authorizer: '${self:custom.authorizer}' }
   # getProduct:
   #   handler: dist/get-product.handler
   #   events:
-  #     - http: { path: /products/{id}, method: get, cors: true, authorizer: ${self:custom.authorizer} }
+  #     - http: { path: /products/{id}, method: get, cors: true, authorizer: '${self:custom.authorizer}' }
   # listProducts:
   #   handler: dist/list-products.handler
   #   events:
-  #     - http: { path: /products, method: get, cors: true, authorizer: ${self:custom.authorizer} }
+  #     - http: { path: /products, method: get, cors: true, authorizer: '${self:custom.authorizer}' }
   # createCategory:
   #   handler: dist/create-category.handler
   #   events:
-  #     - http: { path: /categories, method: post, cors: true, authorizer: ${self:custom.authorizer} }
+  #     - http: { path: /categories, method: post, cors: true, authorizer: '${self:custom.authorizer}' }
 
   # ===== Bloque 5: Projector CQRS =====
   # TODO Bloque 5: descomenta cuando implementes el projector.

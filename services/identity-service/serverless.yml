@@ -152,3 +152,7 @@ resources:
       Value: !Ref CognitoUserPoolClient
       Export:
         Name: ${self:service}-${self:provider.stage}-UserPoolClientId
+    AuthorizerLambdaArn:
+      Value: !GetAtt AuthorizerLambdaFunction.Arn
+      Export:
+        Name: ${self:service}-${self:provider.stage}-AuthorizerLambdaArn

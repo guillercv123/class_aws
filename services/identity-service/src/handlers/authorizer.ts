@@ -9,10 +9,8 @@ const logger = new Logger();
 
 
 const verifier = CognitoJwtVerifier.create({
-// @ts-ignore
     userPoolId: process.env.USER_POOL_ID!,
     tokenUse: 'access',
-    // @ts-ignore
     clientId: process.env.CLIENT_ID!,
 });
 
@@ -77,6 +75,7 @@ function buildPolicy(effect: 'Allow' | 'Deny', methodArn: string) {
     // En sesión 9 refinamos con recurso por tenant.
     const arnParts = methodArn.split(':');
     const apiGatewayArn = arnParts.slice(0, 5).join(':');
+    // @ts-ignore
     const [apiId, stage] = arnParts[5].split('/');
     const resource = `${apiGatewayArn}:${apiId}/${stage}/*/*`;
 

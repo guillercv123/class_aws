@@ -13,6 +13,35 @@ import type { Product } from '../types/catalog';
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.TABLE_NAME!;
 
+type ProductItem = Product & {
+  PK: string;
+  SK: string;
+  GSI1PK: string;
+  GSI1SK: string;
+  entityType: 'Product';
+};
+
+type Category = CreateCategoryInput & {
+  categoryId: string;
+  createdAt: string;
+};
+
+type CategoryItem = Category & {
+  PK: string;
+  SK: string;
+  entityType: 'Category';
+};
+
+const toProduct = (item: ProductItem): Product => ({
+  productId: item.productId,
+  name: item.name,
+  price: item.price,
+  categoryId: item.categoryId,
+  status: item.status,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});
+
 /**
  * Repository del catálogo. Encapsula TODA la interacción con DynamoDB.
  *
@@ -21,13 +50,7 @@ const TABLE = process.env.TABLE_NAME!;
  *   NUNCA del input del cliente. Así ninguna operación puede cruzar tenants.
  */
 export class CatalogRepository {
-  constructor(private readonly tenantId: string) {
-    // TODO Bloque 3: usarás this.tenantId, client, TABLE y keys al implementar.
-    void this.tenantId;
-    void client;
-    void TABLE;
-    void keys;
-  }
+  constructor(private readonly tenantId: string) {}
 
   /**
    * Bloque 3 — TODO:
@@ -42,11 +65,33 @@ export class CatalogRepository {
    * Devuelve el Product creado.
    */
   async createProduct(input: CreateProductInput): Promise<Product> {
-    // TODO Bloque 3: implementar.
-    void input;
-    void PutCommand;
-    void randomUUID;
-    throw new Error('Not implemented: createProduct');
+    const productId = randomUUID();
+    const now = new Date().toISOString();
+    const product: Product = {
+      productId,
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const item: ProductItem = {
+      PK: keys.catalogPk(this.tenantId),
+      SK: keys.productSk(productId),
+      GSI1PK: keys.gsi1CategoryPk(this.tenantId, input.categoryId),
+      GSI1SK: keys.productSk(productId),
+      entityType: 'Product',
+      ...product,
+    };
+
+    await client.send(
+        new PutCommand({
+          TableName: TABLE,
+          Item: item,
+          ConditionExpression: 'attribute_not_exists(PK)',
+        }),
+    );
+
+    return product;
   }
 
   /**
@@ -56,10 +101,21 @@ export class CatalogRepository {
    * Devuelve el Product o null si no existe.
    */
   async getProduct(productId: string): Promise<Product | null> {
-    // TODO Bloque 3: implementar.
-    void productId;
-    void GetCommand;
-    throw new Error('Not implemented: getProduct');
+    const result = await client.send(
+        new GetCommand({
+          TableName: TABLE,
+          Key: {
+            PK: keys.catalogPk(this.tenantId),
+            SK: keys.productSk(productId),
+          },
+        }),
+    );
+
+    if (!result.Item) {
+      return null;
+    }
+
+    return toProduct(result.Item as ProductItem);
   }
 
   /**
@@ -71,11 +127,20 @@ export class CatalogRepository {
    * Respeta el `limit` recibido.
    */
   async listProductsByCategory(categoryId: string, limit = 25): Promise<Product[]> {
-    // TODO Bloque 3: implementar.
-    void categoryId;
-    void limit;
-    void QueryCommand;
-    throw new Error('Not implemented: listProductsByCategory');
+    const result = await client.send(
+        new QueryCommand({
+          TableName: TABLE,
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': keys.gsi1CategoryPk(this.tenantId, categoryId),
+            ':sk': 'PRODUCT#',
+          },
+          Limit: limit,
+        }),
+    );
+
+    return ((result.Items ?? []) as ProductItem[]).map(toProduct);
   }
 
   /**
@@ -85,9 +150,29 @@ export class CatalogRepository {
    *   entityType = 'Category', + campos del input + createdAt
    * Devuelve { categoryId, ...input, createdAt }.
    */
-  async createCategory(input: CreateCategoryInput) {
-    // TODO Bloque 3: implementar.
-    void input;
-    throw new Error('Not implemented: createCategory');
+  async createCategory(input: CreateCategoryInput): Promise<Category> {
+    const categoryId = randomUUID();
+    const createdAt = new Date().toISOString();
+    const category: Category = {
+      categoryId,
+      ...input,
+      createdAt,
+    };
+
+    const item: CategoryItem = {
+      PK: keys.catalogPk(this.tenantId),
+      SK: keys.categorySk(categoryId),
+      entityType: 'Category',
+      ...category,
+    };
+
+    await client.send(
+        new PutCommand({
+          TableName: TABLE,
+          Item: item,
+        }),
+    );
+
+    return category;
   }
 }
