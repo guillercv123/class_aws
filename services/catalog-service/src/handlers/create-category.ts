@@ -1,9 +1,21 @@
-import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from 'aws-lambda';
+import type {
+  APIGatewayProxyWithLambdaAuthorizerHandler
+} from 'aws-lambda';
 import { created, errorResponse, ValidationError } from '@orderflow/shared';
 import { createCategorySchema } from '../lib/schemas';
 import { CatalogRepository } from '../lib/catalog-repository';
 import type { AuthContext } from '../types/catalog';
 
+const parseJsonBody = (body: string | null): unknown => {
+  if (!body) {
+    throw new ValidationError('El cuerpo de la solicitud es obligatorio');
+  }
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    throw new ValidationError('El cuerpo de la solicitud no contiene un JSON válido');
+  }
+};
 /**
  * POST /categories
  *
@@ -13,17 +25,29 @@ import type { AuthContext } from '../types/catalog';
  *   3. repo.createCategory(parsed.data).
  *   4. Devolver created(category, `/categories/${category.categoryId}`).
  */
-export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthContext> = async (event) => {
+export const handler: APIGatewayProxyWithLambdaAuthorizerHandler<AuthContext> = async (event) => {
   try {
-    const { tenantId } = event.requestContext.authorizer.lambda;
+    const { tenantId } = event.requestContext.authorizer;
 
-    // TODO Bloque 4: implementar.
-    void tenantId;
-    void createCategorySchema;
-    void CatalogRepository;
-    void ValidationError;
-    void created;
-    throw new Error('Not implemented: createCategory handler');
+    const body = parseJsonBody(event.body);
+    const validationResult = createCategorySchema.safeParse(body);
+
+    if (!validationResult.success) {
+      throw new ValidationError(
+          validationResult.error.issues
+              .map((issue) => {
+                const path = issue.path.join('.');
+                return path
+                    ? `${path}: ${issue.message}`
+                    : issue.message;
+              })
+              .join(', '),
+      );
+    }
+
+    const repository = new CatalogRepository(tenantId);
+    const category = await repository.createCategory(validationResult.data);
+    return created(category);
   } catch (err) {
     return errorResponse(err);
   }

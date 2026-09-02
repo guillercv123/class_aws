@@ -1,7 +1,9 @@
-import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from 'aws-lambda';
-import { ok, errorResponse, NotFoundError } from '@orderflow/shared';
+import type {
+  APIGatewayProxyWithLambdaAuthorizerHandler
+} from 'aws-lambda';
+import {ok, errorResponse, NotFoundError, ValidationError} from '@orderflow/shared';
 import { CatalogRepository } from '../lib/catalog-repository';
-import type { AuthContext } from '../types/catalog';
+import {AuthContext} from "../types/catalog";
 
 /**
  * GET /products/{id}
@@ -12,16 +14,27 @@ import type { AuthContext } from '../types/catalog';
  *   3. repo.getProduct(productId); si null → throw new NotFoundError('Product', productId).
  *   4. Devolver ok(product).
  */
-export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthContext> = async (event) => {
+export const handler: APIGatewayProxyWithLambdaAuthorizerHandler<AuthContext> = async (event) => {
   try {
-    const { tenantId } = event.requestContext.authorizer.lambda;
+    const { tenantId } = event.requestContext.authorizer;
+    const productId = event.pathParameters?.id?.trim();
 
-    // TODO Bloque 4: implementar.
-    void tenantId;
-    void CatalogRepository;
-    void NotFoundError;
-    void ok;
-    throw new Error('Not implemented: getProduct handler');
+    if (!productId) {
+      throw new ValidationError(
+          'El parámetro de ruta "id" es obligatorio',
+      );
+    }
+
+    const repository = new CatalogRepository(tenantId);
+    const product = await repository.getProduct(productId);
+
+    if (!product) {
+      throw new NotFoundError(
+          `No se encontró el producto con ID "${productId}"`,
+      );
+    }
+
+    return ok(product);
   } catch (err) {
     return errorResponse(err);
   }

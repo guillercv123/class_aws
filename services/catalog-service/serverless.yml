@@ -56,19 +56,35 @@ functions:
   createProduct:
     handler: dist/create-product.handler
     events:
-      - http: { path: /products, method: post, cors: true, authorizer: '${self:custom.authorizer}' }
-  # getProduct:
-  #   handler: dist/get-product.handler
-  #   events:
-  #     - http: { path: /products/{id}, method: get, cors: true, authorizer: '${self:custom.authorizer}' }
-  # listProducts:
-  #   handler: dist/list-products.handler
-  #   events:
-  #     - http: { path: /products, method: get, cors: true, authorizer: '${self:custom.authorizer}' }
-  # createCategory:
-  #   handler: dist/create-category.handler
-  #   events:
-  #     - http: { path: /categories, method: post, cors: true, authorizer: '${self:custom.authorizer}' }
+      - http:
+          path: /products
+          method: post
+          cors: true
+          authorizer: ${self:custom.authorizer}
+  getProduct:
+    handler: dist/get-product.handler
+    events:
+      - http:
+          path: /products/{id}
+          method: get
+          cors: true
+          authorizer: ${self:custom.authorizer}
+  listProducts:
+    handler: dist/list-products.handler
+    events:
+      - http:
+          path: /products
+          method: get
+          cors: true
+          authorizer: ${self:custom.authorizer}
+  createCategory:
+    handler: dist/create-category.handler
+    events:
+      - http:
+          path: /categories
+          method: post
+          cors: true
+          authorizer: ${self:custom.authorizer}
 
   # ===== Bloque 5: Projector CQRS =====
   # TODO Bloque 5: descomenta cuando implementes el projector.

@@ -1,4 +1,4 @@
-import type { APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
+import type {APIGatewayProxyResult} from 'aws-lambda';
 import { DomainError } from './errors';
 
 const DEFAULT_HEADERS = {
@@ -7,20 +7,20 @@ const DEFAULT_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
 } as const;
 
-export function ok<T>(body: T, extraHeaders: Record<string, string> = {}): APIGatewayProxyStructuredResultV2 {
+export function ok<T>(body: T, extraHeaders: Record<string, string> = {}): APIGatewayProxyResult {
   return { statusCode: 200, headers: { ...DEFAULT_HEADERS, ...extraHeaders }, body: JSON.stringify(body) };
 }
-export function created<T>(body: T, location?: string): APIGatewayProxyStructuredResultV2 {
+export function created<T>(body: T, location?: string): APIGatewayProxyResult {
   return {
     statusCode: 201,
     headers: { ...DEFAULT_HEADERS, ...(location ? { Location: location } : {}) },
     body: JSON.stringify(body),
   };
 }
-export function noContent(): APIGatewayProxyStructuredResultV2 {
-  return { statusCode: 204, headers: DEFAULT_HEADERS };
+export function noContent(): APIGatewayProxyResult {
+  return {body: "", statusCode: 204, headers: DEFAULT_HEADERS };
 }
-export function errorResponse(err: unknown): APIGatewayProxyStructuredResultV2 {
+export function errorResponse(err: unknown): APIGatewayProxyResult {
   if (err instanceof DomainError) {
     return {
       statusCode: err.statusCode,

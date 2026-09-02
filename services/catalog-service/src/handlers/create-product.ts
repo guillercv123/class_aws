@@ -19,7 +19,6 @@ const logger = new Logger();
  *   4. Devolver created(product, `/products/${product.productId}`).
  *   Todo dentro de try/catch → errorResponse(err).
  */
-// @ts-ignore
 export const handler: APIGatewayProxyWithLambdaAuthorizerHandler<AuthContext> = async (event) => {
   try {
     const { tenantId } = event.requestContext.authorizer;
