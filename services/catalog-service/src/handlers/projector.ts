@@ -1,4 +1,5 @@
-import type { DynamoDBStreamHandler } from 'aws-lambda';
+import type { DynamoDBStreamHandler} from 'aws-lambda';
+import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { Logger } from '@aws-lambda-powertools/logger';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -27,17 +28,50 @@ const TABLE = process.env.TABLE_NAME!;
  *   El PutCommand es idempotente por diseño (reprocesar no daña).
  */
 export const handler: DynamoDBStreamHandler = async (event) => {
-  // TODO Bloque 5: usarás client, TABLE, keys, unmarshall, Put/GetCommand al implementar.
-  void client;
-  void TABLE;
-  void keys;
-  void unmarshall;
-  void PutCommand;
-  void GetCommand;
-
   for (const record of event.Records) {
-    // TODO Bloque 5: implementar.
-    void record;
-    logger.debug('projector record (not implemented)');
+    try {
+      if (record.eventName === 'REMOVE' || !record.dynamodb?.NewImage) {
+        continue;
+      }
+
+      const item = unmarshall(record.dynamodb?.NewImage as Record<string, AttributeValue>);
+
+      if (item.entityType !== 'Product' || !item.PK || !item.productId || !item.categoryId) {
+        continue;
+      }
+
+      const categoryResult = await client.send(
+        new GetCommand({
+          TableName: TABLE,
+          Key: {
+            PK: item.PK,
+            SK: keys.categorySk(item.categoryId),
+          },
+        }),
+      );
+
+      const categoryName =
+        typeof categoryResult.Item?.name === 'string' ? categoryResult.Item.name : 'Uncategorized';
+
+      await client.send(
+        new PutCommand({
+          TableName: TABLE,
+          Item: {
+            PK: item.PK,
+            SK: keys.productViewSk(item.productId),
+            entityType: 'ProductView',
+            productId: item.productId,
+            name: item.name ?? '',
+            price: item.price ?? 0,
+            categoryId: item.categoryId,
+            categoryName,
+            status: item.status ?? 'inactive',
+            updatedAt: item.updatedAt ?? new Date().toISOString(),
+          },
+        }),
+      );
+    } catch (err) {
+      logger.error('projector failed to materialize product view', { err, record });
+    }
   }
 };

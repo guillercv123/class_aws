@@ -87,20 +87,19 @@ functions:
           authorizer: ${self:custom.authorizer}
 
   # ===== Bloque 5: Projector CQRS =====
-  # TODO Bloque 5: descomenta cuando implementes el projector.
-  # projector:
-  #   handler: dist/projector.handler
-  #   events:
-  #     - stream:
-  #         type: dynamodb
-  #         arn: !GetAtt CatalogTable.StreamArn
-  #         batchSize: 10
-  #         startingPosition: LATEST
-  #         maximumRetryAttempts: 3
-  #         destinations:
-  #           onFailure:
-  #             type: sqs
-  #             arn: !GetAtt ProjectorDLQ.Arn
+  projector:
+    handler: dist/projector.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt CatalogTable.StreamArn
+          batchSize: 10
+          startingPosition: LATEST
+          maximumRetryAttempts: 3
+          destinations:
+            onFailure:
+              type: sqs
+              arn: !GetAtt ProjectorDLQ.Arn
 
 resources:
   Resources:
