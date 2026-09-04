@@ -8,7 +8,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { keys } from './keys';
 import type { CreateProductInput, CreateCategoryInput } from './schemas';
-import type { Product } from '../types/catalog';
+import type { Product, ProductView } from '../types/catalog';
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.TABLE_NAME!;
@@ -32,13 +32,20 @@ type CategoryItem = Category & {
   entityType: 'Category';
 };
 
-const toProduct = (item: ProductItem): Product => ({
+type ProductViewItem = ProductView & {
+  PK: string;
+  SK: string;
+  entityType: 'ProductView';
+};
+
+
+const toProductView = (item: ProductViewItem): ProductView => ({
   productId: item.productId,
   name: item.name,
   price: item.price,
   categoryId: item.categoryId,
+  categoryName: item.categoryName,
   status: item.status,
-  createdAt: item.createdAt,
   updatedAt: item.updatedAt,
 });
 
@@ -95,27 +102,26 @@ export class CatalogRepository {
   }
 
   /**
-   * Bloque 3 — TODO:
-   * Obtiene un producto por su ID dentro del tenant.
-   *   Key = { PK: catalogPk(tenantId), SK: productSk(productId) }
-   * Devuelve el Product o null si no existe.
+   * Obtiene la vista materializada del producto por su ID dentro del tenant.
+   *   Key = { PK: catalogPk(tenantId), SK: productViewSk(productId) }
+   * Devuelve la proyección `ProductView` o null si no existe.
    */
-  async getProduct(productId: string): Promise<Product | null> {
-    const result = await client.send(
-        new GetCommand({
-          TableName: TABLE,
-          Key: {
-            PK: keys.catalogPk(this.tenantId),
-            SK: keys.productSk(productId),
-          },
-        }),
-    );
+  async getProduct(productId: string): Promise<ProductView | null> {
+   const result = await client.send(
+     new GetCommand({
+       TableName: TABLE,
+       Key: {
+         PK: keys.catalogPk(this.tenantId),
+         SK: keys.productViewSk(productId),
+       },
+     }),
+   );
 
-    if (!result.Item) {
-      return null;
-    }
+   if (!result.Item) {
+     return null;
+   }
 
-    return toProduct(result.Item as ProductItem);
+   return toProductView(result.Item as ProductViewItem);
   }
 
   /**
@@ -125,22 +131,33 @@ export class CatalogRepository {
    *   KeyConditionExpression = 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)'
    *   :pk = gsi1CategoryPk(tenantId, categoryId), :sk = 'PRODUCT#'
    * Respeta el `limit` recibido.
+   *
+   * Como la vista materializada (`ProductView`) se guarda con SK VIEW#PRODUCT#<id>,
+   * primero consultamos los Product reales en GSI1 y luego leemos su proyección.
    */
-  async listProductsByCategory(categoryId: string, limit = 25): Promise<Product[]> {
-    const result = await client.send(
-        new QueryCommand({
-          TableName: TABLE,
-          IndexName: 'GSI1',
-          KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
-          ExpressionAttributeValues: {
-            ':pk': keys.gsi1CategoryPk(this.tenantId, categoryId),
-            ':sk': 'PRODUCT#',
-          },
-          Limit: limit,
-        }),
-    );
+  async listProductsByCategory(categoryId: string, limit = 25): Promise<ProductView[]> {
+   const result = await client.send(
+     new QueryCommand({
+       TableName: TABLE,
+       IndexName: 'GSI1',
+       KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
+       ExpressionAttributeValues: {
+         ':pk': keys.gsi1CategoryPk(this.tenantId, categoryId),
+         ':sk': 'PRODUCT#',
+       },
+       Limit: limit,
+     }),
+   );
 
-    return ((result.Items ?? []) as ProductItem[]).map(toProduct);
+   const products = ((result.Items ?? []) as ProductItem[]).filter(
+     (item) => typeof item.productId === 'string',
+   );
+
+   const views = await Promise.all(
+     products.map(async (item) => this.getProduct(item.productId)),
+   );
+
+   return views.filter((view): view is ProductView => view !== null);
   }
 
   /**
