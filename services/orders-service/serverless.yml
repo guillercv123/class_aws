@@ -1,0 +1,196 @@
+service: orders-service
+frameworkVersion: '4'
+
+plugins:
+  - serverless-step-functions
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 15
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    INVENTORY_TABLE: orderflow-inventory-${self:provider.stage}
+    POWERTOOLS_SERVICE_NAME: orders-service
+  tracing:
+    lambda: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:UpdateItem
+            - dynamodb:GetItem
+          Resource:
+            - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/orderflow-inventory-${self:provider.stage}'
+        - Effect: Allow
+          Action:
+            - states:StartExecution
+          Resource:
+            - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:order-saga-${self:provider.stage}'
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  # ===== Bloque 4: Task handlers de la Saga + endpoint =====
+  # Los handlers simples (validate, confirm, markFailed) vienen listos.
+  # reserve, release, payment y createOrder son TODO.
+  validateOrder:
+    handler: dist/validate-order.handler
+  reserveInventory:
+    handler: dist/reserve-inventory.handler
+  processPayment:
+    handler: dist/process-payment.handler
+  releaseInventory:
+    handler: dist/release-inventory.handler
+  confirmOrder:
+    handler: dist/confirm-order.handler
+  markOrderFailed:
+    handler: dist/mark-order-failed.handler
+  # TODO Bloque 4: descomenta el endpoint cuando implementes create-order.
+  # createOrder:
+  #   handler: dist/create-order.handler
+  #   environment:
+  #     STATE_MACHINE_ARN: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:order-saga-${self:provider.stage}'
+  #   events:
+  #     - http:
+  #         path: /orders
+  #         method: post
+  #         cors: true
+  #         authorizer: ${self:custom.authorizer}
+
+stepFunctions:
+  stateMachines:
+    orderSaga:
+      name: order-saga-${self:provider.stage}
+      definition:
+        Comment: OrderFlow — Saga de creacion de orden (orquestada)
+        StartAt: ValidateOrder
+        States:
+          ValidateOrder:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - ValidateOrderLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            ResultPath: $.validation
+            Retry:
+              - ErrorEquals:
+                  - States.TaskFailed
+                IntervalSeconds: 1
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: OrderFailed
+            Next: ReserveInventory
+
+          ReserveInventory:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - ReserveInventoryLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            ResultPath: $.reservation
+            Retry:
+              - ErrorEquals:
+                  - States.TaskFailed
+                IntervalSeconds: 1
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: OrderFailed
+            Next: ProcessPayment
+
+          ProcessPayment:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - ProcessPaymentLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            ResultPath: $.payment
+            TimeoutSeconds: 15
+            Retry:
+              - ErrorEquals:
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: $.error
+                Next: ReleaseInventory
+            Next: ConfirmOrder
+
+          ReleaseInventory:
+            Type: Task
+            Comment: Compensacion de ReserveInventory
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - ReleaseInventoryLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            ResultPath: $.release
+            Next: OrderFailed
+
+          ConfirmOrder:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - ConfirmOrderLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            ResultPath: $.confirmation
+            End: true
+
+          OrderFailed:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName:
+                Fn::GetAtt:
+                  - MarkOrderFailedLambdaFunction
+                  - Arn
+              Payload.$: '$'
+            End: true
+
+custom:
+  authorizer:
+    name: authorizer
+    type: request
+    identitySource: method.request.header.Authorization
+    resultTtlInSeconds: 0
+
+resources:
+  Outputs:
+    StateMachineArn:
+      Value: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:order-saga-${self:provider.stage}'
+      Export:
+        Name: ${self:service}-${self:provider.stage}-StateMachineArn

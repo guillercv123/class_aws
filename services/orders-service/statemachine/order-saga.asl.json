@@ -1,0 +1,85 @@
+{
+  "Comment": "OrderFlow — Saga de creacion de orden (orquestada)",
+  "StartAt": "ValidateOrder",
+  "States": {
+    "ValidateOrder": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["ValidateOrderLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.validation",
+      "Retry": [
+        { "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 1, "MaxAttempts": 2, "BackoffRate": 2 }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "OrderFailed" }
+      ],
+      "Next": "ReserveInventory"
+    },
+    "ReserveInventory": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["ReserveInventoryLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.reservation",
+      "Retry": [
+        { "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 1, "MaxAttempts": 2, "BackoffRate": 2 }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "OrderFailed" }
+      ],
+      "Next": "ProcessPayment"
+    },
+    "ProcessPayment": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["ProcessPaymentLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.payment",
+      "TimeoutSeconds": 15,
+      "Retry": [
+        { "ErrorEquals": ["States.Timeout"], "IntervalSeconds": 2, "MaxAttempts": 2, "BackoffRate": 2 }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReleaseInventory" }
+      ],
+      "Next": "ConfirmOrder"
+    },
+    "ReleaseInventory": {
+      "Type": "Task",
+      "Comment": "Compensacion de ReserveInventory",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["ReleaseInventoryLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.release",
+      "Next": "OrderFailed"
+    },
+    "ConfirmOrder": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["ConfirmOrderLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.confirmation",
+      "End": true
+    },
+    "OrderFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": { "Fn::GetAtt": ["MarkOrderFailedLambdaFunction", "Arn"] },
+        "Payload.$": "$"
+      },
+      "End": true
+    }
+  }
+}

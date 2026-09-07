@@ -13,5 +13,8 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
     "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "^3.1127.0"
   }
 }
