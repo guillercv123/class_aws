@@ -14,6 +14,7 @@ provider:
     TABLE_NAME: !Ref CatalogTable
     LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}, 'INFO'}
     POWERTOOLS_SERVICE_NAME: catalog-service
+    EVENT_BUS_NAME: orderflow-bus-${self:provider.stage}
   tracing:
     lambda: true
     apiGateway: true
@@ -29,7 +30,11 @@ provider:
           Resource:
             - !GetAtt CatalogTable.Arn
             - !Sub '${CatalogTable.Arn}/index/*'
-
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource:
+            - !GetAtt OrderflowBus.Arn
 custom:
   logLevel:
     demo: DEBUG
@@ -142,10 +147,19 @@ resources:
         QueueName: catalog-projector-dlq-${self:provider.stage}
         MessageRetentionPeriod: 1209600
 
+    OrderflowBus:
+      Type: AWS::Events::EventBus
+      Properties:
+        Name: orderflow-bus-${self:provider.stage}
+
   Outputs:
     CatalogTableName:
       Value: !Ref CatalogTable
       Export:
         Name: ${self:service}-${self:provider.stage}-TableName
+    EventBusArn:
+      Value: !GetAtt OrderflowBus.Arn
+      Export:
+        Name: ${self:service}-${self:provider.stage}-EventBusArn
     ApiUrl:
       Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'

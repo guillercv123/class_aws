@@ -1,0 +1,77 @@
+service: inventory-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    TABLE_NAME: !Ref InventoryTable
+    POWERTOOLS_SERVICE_NAME: inventory-service
+  tracing:
+    lambda: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+          Resource:
+            - !GetAtt InventoryTable.Arn
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  # ===== Bloque 2: consumidor de product.created.v1 =====
+  onProductCreated:
+    handler: dist/on-product-created.handler
+    events:
+      - eventBridge:
+          eventBus: ${cf:catalog-service-${self:provider.stage}.EventBusArn}
+          pattern:
+            source:
+              - orderflow.catalog
+            detail-type:
+              - product.created.v1
+
+resources:
+  Resources:
+    InventoryTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: orderflow-inventory-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
+
+  Outputs:
+    InventoryTableName:
+      Value: !Ref InventoryTable
+      Export:
+        Name: ${self:service}-${self:provider.stage}-TableName
+    InventoryTableArn:
+      Value: !GetAtt InventoryTable.Arn
+      Export:
+        Name: ${self:service}-${self:provider.stage}-TableArn

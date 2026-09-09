@@ -1,6 +1,13 @@
 import type { APIGatewayProxyWithLambdaAuthorizerHandler } from 'aws-lambda';
 import { Logger } from '@aws-lambda-powertools/logger';
-import { created, errorResponse, ValidationError } from '@orderflow/shared';
+import {
+  created,
+      errorResponse,
+      ValidationError,
+      publishEvent,
+      EVENT_SOURCES,
+      EVENT_TYPES,
+} from '@orderflow/shared';
 import { createProductSchema } from '../lib/schemas';
 import { CatalogRepository } from '../lib/catalog-repository';
 import type { AuthContext } from '../types/catalog';
@@ -31,6 +38,12 @@ export const handler: APIGatewayProxyWithLambdaAuthorizerHandler<AuthContext> = 
 
     const repo = new CatalogRepository(tenantId);
     const product = await repo.createProduct(parsed.data);
+    await publishEvent({
+      source: EVENT_SOURCES.catalog,
+      type: EVENT_TYPES.productCreated,
+      tenantId,
+      detail: { productId: product.productId, categoryId: product.categoryId, initialStock: 0 },
+    });
 
     logger.info('Product created', { tenantId, productId: product.productId });
     return created(product, `/products/${product.productId}`);
