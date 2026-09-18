@@ -56,16 +56,16 @@ functions:
   markOrderFailed:
     handler: dist/mark-order-failed.handler
   # TODO Bloque 4: descomenta el endpoint cuando implementes create-order.
-  # createOrder:
-  #   handler: dist/create-order.handler
-  #   environment:
-  #     STATE_MACHINE_ARN: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:order-saga-${self:provider.stage}'
-  #   events:
-  #     - http:
-  #         path: /orders
-  #         method: post
-  #         cors: true
-  #         authorizer: ${self:custom.authorizer}
+  createOrder:
+    handler: dist/create-order.handler
+    environment:
+      STATE_MACHINE_ARN: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:order-saga-${self:provider.stage}'
+    events:
+      - http:
+          path: /orders
+          method: post
+          cors: true
+          authorizer: ${self:custom.authorizer}
 
 stepFunctions:
   stateMachines:
@@ -183,7 +183,7 @@ stepFunctions:
 
 custom:
   authorizer:
-    name: authorizer
+    arn: ${cf:identity-service-${self:provider.stage}.AuthorizerLambdaArn}
     type: request
     identitySource: method.request.header.Authorization
     resultTtlInSeconds: 0
