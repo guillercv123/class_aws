@@ -22,9 +22,21 @@ const TABLE = process.env.INVENTORY_TABLE!;
 export const handler = async (input: SagaInput) => {
   logger.info('ReleaseInventory (compensation)', { orderId: input.orderId });
 
-  // TODO Bloque 4: implementar.
-  void ddb;
-  void TABLE;
-  void UpdateCommand;
-  throw new Error('Not implemented: release-inventory');
+  for (const item of input.items) {
+    await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE,
+          Key: {
+            PK: `TENANT#${input.tenantId}#INVENTORY`,
+            SK: `PRODUCT#${item.productId}`,
+          },
+          UpdateExpression: 'SET available = available + :q, reserved = reserved - :q',
+          ExpressionAttributeValues: { ':q': item.quantity },
+        }),
+    );
+  }
+
+  logger.info('Inventory released', { orderId: input.orderId });
+  return { released: true };
+
 };

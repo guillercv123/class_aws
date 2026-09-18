@@ -18,6 +18,8 @@ const logger = new Logger();
 export const handler = async (input: SagaInput) => {
   logger.info('ProcessPayment', { orderId: input.orderId, amount: input.amount });
 
-  // TODO Bloque 4: implementar la simulación.
-  throw new Error('Not implemented: process-payment');
+  if (input.amount > 1000) {
+    throw new Error('PaymentDeclined');
+  }
+  return { paymentId: `pay_${Date.now()}`, status: 'succeeded' };
 };
