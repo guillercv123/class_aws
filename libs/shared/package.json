@@ -10,11 +10,11 @@
     "lint": "eslint src --max-warnings 0",
     "test": "echo \"no tests yet\" && exit 0"
   },
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "^3.658.0"
+  },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
     "typescript": "^5.5.4"
-  },
-  "dependencies": {
-    "@aws-sdk/client-eventbridge": "^3.1127.0"
   }
 }
