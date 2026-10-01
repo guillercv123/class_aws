@@ -1,0 +1,100 @@
+service: payments-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 15
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    TABLE_NAME: !Ref PaymentsTable
+    CIRCUIT_TABLE: !Ref PaymentsTable
+    IDEMPOTENCY_TABLE: !Ref PaymentsTable
+    EVENT_BUS_NAME: orderflow-bus-${self:provider.stage}
+    POWERTOOLS_SERVICE_NAME: payments-service
+  tracing:
+    lambda: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:TransactWriteItems
+          Resource:
+            - !GetAtt PaymentsTable.Arn
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource: '*'
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  # ===== Bloque 2/3: endpoint de pago =====
+  # TODO Bloque 2/3: descomenta cuando implementes el handler.
+   processPayment:
+     handler: dist/process-payment.handler
+     events:
+       - http:
+           path: /payments
+           method: post
+           cors: true
+           authorizer: ${self:custom.authorizer}
+
+  # ===== Bloque 1: worker del outbox =====
+  # TODO Bloque 1: descomenta cuando implementes el worker.
+   outboxWorker:
+     handler: dist/outbox-worker.handler
+     events:
+       - stream:
+           type: dynamodb
+           arn: !GetAtt PaymentsTable.StreamArn
+           batchSize: 10
+           startingPosition: LATEST
+
+custom:
+  authorizer:
+    name: authorizer
+    type: request
+    identitySource: method.request.header.Authorization
+    resultTtlInSeconds: 0
+
+resources:
+  Resources:
+    PaymentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: orderflow-payments-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
+
+  Outputs:
+    PaymentsTableName:
+      Value: !Ref PaymentsTable
+    ApiUrl:
+      Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'

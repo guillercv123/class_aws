@@ -1,0 +1,129 @@
+service: notifications-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    POWERTOOLS_SERVICE_NAME: notifications-service
+  tracing:
+    lambda: true
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+    - 'dist/**'
+
+functions:
+  sendEmail:
+    handler: dist/send-email.handler
+    events:
+      - sqs:
+          arn: !GetAtt EmailQueue.Arn
+          batchSize: 10
+          functionResponseType: ReportBatchItemFailures
+  sendPush:
+    handler: dist/send-push.handler
+    events:
+      - sqs:
+          arn: !GetAtt PushQueue.Arn
+          batchSize: 10
+          functionResponseType: ReportBatchItemFailures
+
+resources:
+  Resources:
+    OrderEventsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: order-events-${self:provider.stage}
+
+    EmailQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notif-email-${self:provider.stage}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt EmailDLQ.Arn
+          maxReceiveCount: 3
+    EmailDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notif-email-dlq-${self:provider.stage}
+        MessageRetentionPeriod: 1209600
+
+    PushQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notif-push-${self:provider.stage}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt PushDLQ.Arn
+          maxReceiveCount: 3
+    PushDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: notif-push-dlq-${self:provider.stage}
+        MessageRetentionPeriod: 1209600
+
+    EmailSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref OrderEventsTopic
+        Protocol: sqs
+        Endpoint: !GetAtt EmailQueue.Arn
+        RawMessageDelivery: true
+    PushSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref OrderEventsTopic
+        Protocol: sqs
+        Endpoint: !GetAtt PushQueue.Arn
+        RawMessageDelivery: true
+
+    # Permite a SNS publicar en ambas colas
+    QueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref EmailQueue
+          - !Ref PushQueue
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: sns.amazonaws.com
+              Action: sqs:SendMessage
+              Resource:
+                - !GetAtt EmailQueue.Arn
+                - !GetAtt PushQueue.Arn
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: !Ref OrderEventsTopic
+
+    EmailDLQAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: notif-email-dlq-not-empty-${self:provider.stage}
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - Name: QueueName
+            Value: notif-email-dlq-${self:provider.stage}
+        Statistic: Maximum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+
+  Outputs:
+    OrderEventsTopicArn:
+      Value: !Ref OrderEventsTopic
+      Export:
+        Name: ${self:service}-${self:provider.stage}-TopicArn
