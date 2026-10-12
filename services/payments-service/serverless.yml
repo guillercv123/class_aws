@@ -16,6 +16,7 @@ provider:
     IDEMPOTENCY_TABLE: !Ref PaymentsTable
     EVENT_BUS_NAME: orderflow-bus-${self:provider.stage}
     POWERTOOLS_SERVICE_NAME: payments-service
+    GATEWAY_FORCE_FAIL: 'false'
   tracing:
     lambda: true
   iam:
@@ -65,7 +66,7 @@ functions:
 
 custom:
   authorizer:
-    name: authorizer
+    arn: ${cf:identity-service-${self:provider.stage}.AuthorizerLambdaArn}
     type: request
     identitySource: method.request.header.Authorization
     resultTtlInSeconds: 0

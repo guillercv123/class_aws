@@ -1,5 +1,5 @@
 import middy from '@middy/core';
-import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from 'aws-lambda';
+import type {APIGatewayProxyWithLambdaAuthorizerHandler} from 'aws-lambda';
 import { Logger } from '@aws-lambda-powertools/logger';
 import {
   ok,
@@ -40,19 +40,44 @@ const logger = new Logger();
  *   3. Si el gateway aprueba → recordPaymentWithOutbox(status: 'succeeded').
  *   4. Devolver ok({ paymentId, status }).
  */
-const baseHandler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthContext> = async (event) => {
+const baseHandler: APIGatewayProxyWithLambdaAuthorizerHandler<AuthContext> = async (event) => {
   try {
-    const { tenantId } = event.requestContext.authorizer.lambda;
-    logger.debug('processPayment invoked', { tenantId });
+    const { tenantId } = event.requestContext.authorizer;
 
-    // TODO Bloque 2/3: implementar según JSDoc.
-    void ValidationError;
-    void withCircuitBreaker;
-    void CircuitOpenError;
-    void callExternalGateway;
-    void recordPaymentWithOutbox;
-    void ok;
-    throw new Error('Not implemented: process-payment handler');
+    const body = JSON.parse(event.body ?? '{}');
+    logger.debug('processPayment invoked', { tenantId });
+/*    if (typeof body.orderId !== 'string' || !body.orderId) {
+      throw new ValidationError('orderId is required');
+    }*/
+    if (typeof body.amount !== 'number' || body.amount <= 0) {
+      throw new ValidationError('amount must be a positive number');
+    }
+
+    try {
+      await withCircuitBreaker(
+          { name: 'payment-gateway', failureThreshold: 3, openDurationMs: 30_000 },
+          () => callExternalGateway(body.amount),
+      );
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'GATEWAY_UNAVAILABLE', message: 'Payment gateway temporarily unavailable' }) };
+      }
+      if ((err as Error).message === 'PaymentDeclined') {
+        const failedId = await recordPaymentWithOutbox({ tenantId, orderId: body.orderId, amount: body.amount, status: 'failed' });
+        return ok({ paymentId: failedId, status: 'failed' });
+      }
+      throw err;
+    }
+
+    const paymentId = await recordPaymentWithOutbox({
+      tenantId,
+      orderId: body.orderId,
+      amount: body.amount,
+      status: 'succeeded',
+    });
+
+    logger.info('Payment processed', { tenantId, paymentId });
+    return ok({ paymentId, status: 'succeeded' });
   } catch (err) {
     logger.error('processPayment failed', { err });
     return errorResponse(err);

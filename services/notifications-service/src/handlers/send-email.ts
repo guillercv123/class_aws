@@ -2,13 +2,6 @@ import type { SQSHandler, SQSBatchResponse } from 'aws-lambda';
 import { Logger } from '@aws-lambda-powertools/logger';
 
 const logger = new Logger();
-
-interface OrderConfirmedDetail {
-  orderId: string;
-  customerEmail: string;
-  amount: number;
-}
-
 /**
  * Consumidor de la cola de email (fan-out desde SNS).
  *
@@ -29,10 +22,21 @@ interface OrderConfirmedDetail {
 export const handler: SQSHandler = async (event): Promise<SQSBatchResponse> => {
   const batchItemFailures: { itemIdentifier: string }[] = [];
 
-  // TODO Bloque 5: implementar según JSDoc.
-  void event;
-  void logger;
-  void ({} as OrderConfirmedDetail);
+  for (const record of event.Records) {
+    try {
+      const body = JSON.parse(record.body);
+      const email = body.detail?.customerEmail ?? '';
+
+      if (email.includes('fail')) {
+        throw new Error('EmailProviderError');
+      }
+
+      logger.info('Email sent', { orderId: body.detail?.orderId, email });
+    } catch (err) {
+      logger.error('Email failed', { messageId: record.messageId, err });
+      batchItemFailures.push({ itemIdentifier: record.messageId });
+    }
+  }
 
   return { batchItemFailures };
 };
